@@ -6,9 +6,6 @@ import datetime, time
 
 ARGS={}
 APTLY_EXEC='/usr/bin/aptly'
-MIRRORS=[]
-PUBLISHED=[]
-SNAPSHOTS_MAP={}
 TIMESTAMP = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d-%H-%M-%S')
 
 def run_command(command):
@@ -20,25 +17,26 @@ def run_command(command):
     return out.split()
 
 def create_snapshots_map():
-    global SNAPSHOTS_MAP
-    SNAPSHOTS_MAP={}
-    SNAPSHOTS=run_command(APTLY_EXEC+" snapshot list -raw")
-    MIRRORS=run_command(APTLY_EXEC+" mirror list -raw")
-    TIME_STAMPS={ snapshot.split('_')[-1] for snapshot in SNAPSHOTS }
-    DISTS= { ''.join(snapshot.split('_')[1]) for snapshot in SNAPSHOTS }
-    for timestamp in TIME_STAMPS:
+    snapshots_map={}
+    snapshots_all=run_command(APTLY_EXEC+" snapshot list -raw")
+    mirrors=run_command(APTLY_EXEC+" mirror list -raw")
+    timestamps={ snapshot.split('_')[-1] for snapshot in snapshots_all}
+    distributions= { snapshot.split('_')[1] for snapshot in snapshots_all}
+    for timestamp in timestamps:
         TEMP_MAP={}
-        snapshots=[snap for snap in SNAPSHOTS if timestamp == snap.split('_')[-1]]
-        for distribution in DISTS:
+        snapshots=[snap for snap in snapshots_all if timestamp == snap.split('_')[-1]]
+        for distribution in distributions:
             common_snaps=[snapshot for snapshot in snapshots if snapshot.split('_')[1] == distribution]
             if len(common_snaps) > 0:
                 TEMP_MAP.update({distribution:common_snaps})
-        SNAPSHOTS_MAP.update({timestamp:TEMP_MAP})
+        snapshots_map.update({timestamp:TEMP_MAP})
+    return snapshots_map
 
 
 def aptly_create_mirrors():
+    existing_mirrors=run_command(APTLY_EXEC+" mirror list -raw")
     for component in ARGS['COMPONENTS']:
-        if ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component not in MIRRORS:
+        if ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component not in existing_mirrors:
             run_command(APTLY_EXEC+" mirror create -architectures="+ARGS['ARCHS']+" "+ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component+' '+ARGS['URL']+' '+ARGS['DIST']+' '+component)
         else:
             print "Not creating mirror: {} as mirror already present".format(ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component)
@@ -55,8 +53,10 @@ def aptly_create_snapshots():
 
 
 def aptly_publish(timestamp):
-    create_snapshots_map()
-    for item in SNAPSHOTS_MAP[timestamp].items():
+    snapshots_map=create_snapshots_map()
+    print "inside publish"
+    print snapshots_map
+    for item in snapshots_map[timestamp].items():
         if item[0] == ARGS['DIST']:
             temp_s1=""
             temp_s2=","*(len(item[1])-1)
@@ -65,8 +65,11 @@ def aptly_publish(timestamp):
             run_command(APTLY_EXEC+" publish snapshot -component="+temp_s2+" -distribution="+ARGS['DIST']+" "+temp_s1+" "+ARGS['PUBLISH']+'/'+timestamp)
 
 def aptly_housekeep(keep):
+    print "housekeeping"
     published_snapshots=run_command(APTLY_EXEC+ " publish list -raw")
+    print "published: {}".format(published_snapshots)
     indices=[index for index in range(0,len(published_snapshots),2) if published_snapshots[index+1] == ARGS['DIST']]
+    print "indices: {}".format(indices)
     sorted_timestamps=sorted([published_snapshots[index] for index in indices])[:len(indices)-keep]
     for timestamp in sorted_timestamps:
         run_command(APTLY_EXEC+ " publish drop "+ARGS['DIST']+" "+timestamp)
@@ -89,12 +92,8 @@ def display_usage():
 def main(argv):
 
     global ARGS
-    global MIRRORS
-    global PUBLISHED
     global TIMESTAMP
 
-    MIRRORS=run_command(APTLY_EXEC+" mirror list -raw")
-    PUBLISHED=run_command(APTLY_EXEC+" publish list -raw")
 
     try:
         opts, args = getopt.getopt(argv,"ha:c:d:u:p:s:k:",["help","filters=","architectures=","components=","distributions=","url=", "publish=","suffix=","keep="])
