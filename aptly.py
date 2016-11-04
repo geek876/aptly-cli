@@ -2,7 +2,6 @@ import subprocess
 import sys
 import getopt
 import datetime, time
-from pprint import pprint as pp
 
 
 ARGS={}
@@ -35,7 +34,6 @@ def create_snapshots_map():
             if len(common_snaps) > 0:
                 TEMP_MAP.update({distribution:common_snaps})
         SNAPSHOTS_MAP.update({timestamp:TEMP_MAP})
-    pp(SNAPSHOTS_MAP)
 
 
 def aptly_create_mirrors():
@@ -68,16 +66,10 @@ def aptly_publish(timestamp):
 
 def aptly_housekeep(keep):
     published_snapshots=run_command(APTLY_EXEC+ " publish list -raw")
-    print published_snapshots
     indices=[index for index in range(0,len(published_snapshots),2) if published_snapshots[index+1] == ARGS['DIST']]
     sorted_timestamps=sorted([published_snapshots[index] for index in indices])[:len(indices)-keep]
-    #sorted_timestamps=sorted([published_snapshots[index] for index in range(0,len(published_snapshots),2) if published_snapshots[index+1] == ARGS['DIST']])
-    print sorted_timestamps
     for timestamp in sorted_timestamps:
-        print timestamp
-        find_index = published_snapshots.index(timestamp)
-        print find_index
-    #    run_command(APTLY_EXEC+ " publish drop "+published_snapshots[find_index+1]+" "+published_snapshots[find_index])
+        run_command(APTLY_EXEC+ " publish drop "+ARGS['DIST']+" "+timestamp)
           
 def display_usage():
     print """   aptly.py -d[--distribution] <distribution> -u[--url] <url> -p[--publish] <publish_path>"
@@ -87,23 +79,25 @@ def display_usage():
                       -d[distribution]   : distribution eg. vivid or vivid-updates
                       -u[url]            : src url eg. http://ie.archive.ubuntu.com/ubuntu
                       -p[publish]        : path to publish the repo
-                      -a[--architectures]: comma separated list of architectures to download packages for. eg. -a amd64,i386
+                      -a[--architectures]: comma separated list of architectures to download packages for. eg. -a amd64,i386; defaults to amd64
                       -c[--components]   : comma separated list of components to download. eg. -c main,universe
+                      -s[--suffix]       : snapshot suffix; defaults to TIMESTAMP of format '%Y-%m-%d-%H-%M-%S' at the time of running the script
+                      -k[--keep]         : keep this many snapshots (per distribution) and delete the rest while housekeeping; default 30
 
           """                     
-
 
 def main(argv):
 
     global ARGS
     global MIRRORS
     global PUBLISHED
+    global TIMESTAMP
 
     MIRRORS=run_command(APTLY_EXEC+" mirror list -raw")
     PUBLISHED=run_command(APTLY_EXEC+" publish list -raw")
 
     try:
-        opts, args = getopt.getopt(argv,"ha:c:d:u:p:s",["help","filters=","architectures=","components=","distributions=","url=", "publish=","suffix="])
+        opts, args = getopt.getopt(argv,"ha:c:d:u:p:s:k:",["help","filters=","architectures=","components=","distributions=","url=", "publish=","suffix=","keep="])
     except getopt.GetoptError:
         display_usage()
         sys.exit(2)
@@ -122,19 +116,26 @@ def main(argv):
             ARGS.update({"ARCHS":arg})
         elif opt in ("-c", "--components"):
             ARGS.update({"COMPONENTS":arg.split(',')})
+        elif opt in ("-s", "--suffix"):
+            ARGS.update({"SUFFIX":arg})
+        elif opt in ("-k", "--keep"):
+            ARGS.update({"KEEP":arg})
 
     if 'ARCHS' not in ARGS:
         ARGS.update({"ARCHS":"amd64"})
+    if 'KEEP' not in ARGS:
+        ARGS.update({"KEEP":30})
+    if 'SUFFIX' in ARGS:
+        TIMESTAMP=ARGS['SUFFIX']
+        
 
     try:
-        global TIMESTAMP
-        TIMESTAMP='2016-11-03-18-00-00'
         print ARGS
-      #  aptly_create_mirrors()
-      #  aptly_update_mirrors()
-      #  aptly_create_snapshots()
-      #  aptly_publish(TIMESTAMP)
-        aptly_housekeep(0)
+        aptly_create_mirrors()
+        aptly_update_mirrors()
+        aptly_create_snapshots()
+        aptly_publish(TIMESTAMP)
+        aptly_housekeep(int(ARGS['KEEP']))
     except BaseException:
         raise
 
