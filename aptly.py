@@ -54,8 +54,6 @@ def aptly_create_snapshots():
 
 def aptly_publish(timestamp):
     snapshots_map=create_snapshots_map()
-    print "inside publish"
-    print snapshots_map
     for item in snapshots_map[timestamp].items():
         if item[0] == ARGS['DIST']:
             temp_s1=""
@@ -65,11 +63,8 @@ def aptly_publish(timestamp):
             run_command(APTLY_EXEC+" publish snapshot -component="+temp_s2+" -distribution="+ARGS['DIST']+" "+temp_s1+" "+ARGS['PUBLISH']+'/'+timestamp)
 
 def aptly_housekeep(keep):
-    print "housekeeping"
     published_snapshots=run_command(APTLY_EXEC+ " publish list -raw")
-    print "published: {}".format(published_snapshots)
     indices=[index for index in range(0,len(published_snapshots),2) if published_snapshots[index+1] == ARGS['DIST']]
-    print "indices: {}".format(indices)
     sorted_timestamps=sorted([published_snapshots[index] for index in indices])[:len(indices)-keep]
     for timestamp in sorted_timestamps:
         run_command(APTLY_EXEC+ " publish drop "+ARGS['DIST']+" "+timestamp)
