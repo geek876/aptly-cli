@@ -2,6 +2,7 @@ import subprocess
 import sys
 import getopt
 import datetime, time
+from pprint import pprint as pp
 
 
 ARGS={}
@@ -18,7 +19,7 @@ def run_command(command):
 
 def create_snapshots_map():
     snapshots_map={}
-    snapshots_all=run_command(APTLY_EXEC+" snapshot list -raw")
+    snapshots_all=[snapshot for snapshot in run_command(APTLY_EXEC+ " snapshot list -raw") if '_'.join(snapshot.split('_')[0:2]) == ARGS['PUBLISH']+'_'+ARGS['DIST']]
     mirrors=run_command(APTLY_EXEC+" mirror list -raw")
     timestamps={ snapshot.split('_')[-1] for snapshot in snapshots_all}
     distributions= { snapshot.split('_')[1] for snapshot in snapshots_all}
@@ -42,25 +43,30 @@ def aptly_create_mirrors():
             print "Not creating mirror: {} as mirror already present".format(ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component)
         
 
-def aptly_update_mirrors():
+def aptly_update_mirrors(force=False):
+    snapshots_without_timestamp=['_'.join(snapshot.split('_')[0:-1]) for snapshot in run_command(APTLY_EXEC+ " snapshot list -raw")]
     for component in ARGS['COMPONENTS']:
-        run_command(APTLY_EXEC+" mirror update "+ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component)
+        if ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component not in snapshots_without_timestamp or force:
+            run_command(APTLY_EXEC+" mirror update "+ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component)
+            run_command(APTLY_EXEC+" snapshot create "+ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component+'_'+TIMESTAMP+' from mirror '+ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component)
     
 
-def aptly_create_snapshots():
-    for component in ARGS['COMPONENTS']:
-        run_command(APTLY_EXEC+" snapshot create "+ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component+'_'+TIMESTAMP+' from mirror '+ARGS['PUBLISH']+'_'+ARGS['DIST']+'_'+component)
-
-
-def aptly_publish(timestamp):
+def aptly_publish():
     snapshots_map=create_snapshots_map()
-    for item in snapshots_map[timestamp].items():
-        if item[0] == ARGS['DIST']:
+    published=run_command(APTLY_EXEC+" publish list")
+    print published
+    pp(snapshots_map)
+    for timestamp, items in snapshots_map.items():
+        for dist,snapshots in items.items():
             temp_s1=""
-            temp_s2=","*(len(item[1])-1)
-            for snapshot in item[1]:
-              temp_s1+=snapshot+" "
-            run_command(APTLY_EXEC+" publish snapshot -component="+temp_s2+" -distribution="+ARGS['DIST']+" "+temp_s1+" "+ARGS['PUBLISH']+'/'+timestamp)
+            temp_s2=","*(len(snapshots)-1)
+            for snapshot in snapshots:
+                if '['+snapshot+']:' in published:
+                    print "snapshot {} is already published".format(snapshot)
+                    break
+                temp_s1+=snapshot+" "
+            if temp_s1:
+                run_command(APTLY_EXEC+" publish snapshot -component="+temp_s2+" -distribution="+dist+" "+temp_s1+" "+ARGS['PUBLISH']+'/'+timestamp)
 
 def aptly_housekeep(keep):
     published_snapshots=run_command(APTLY_EXEC+ " publish list -raw")
@@ -145,9 +151,8 @@ def main(argv):
         print ARGS
         aptly_create_mirrors()
         aptly_update_mirrors()
-        aptly_create_snapshots()
-        aptly_publish(TIMESTAMP)
-        aptly_housekeep(int(ARGS['KEEP']))
+        aptly_publish()
+    #    aptly_housekeep(int(ARGS['KEEP']))
     except BaseException:
         raise
 
