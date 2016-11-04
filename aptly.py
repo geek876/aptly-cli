@@ -68,6 +68,24 @@ def aptly_housekeep(keep):
     sorted_timestamps=sorted([published_snapshots[index] for index in indices])[:len(indices)-keep]
     for timestamp in sorted_timestamps:
         run_command(APTLY_EXEC+ " publish drop "+ARGS['DIST']+" "+timestamp)
+    aptly_delete_unpublished_snapshots()
+    aptly_delete_unpublished_mirrors()
+
+def aptly_delete_unpublished_snapshots():
+    published_snaps=run_command(APTLY_EXEC+ " publish list")  
+    snapshots_all=run_command(APTLY_EXEC+" snapshot list -raw")
+    for snaps in snapshots_all:
+        if '['+snaps+']:' not in published_snaps:
+            run_command(APTLY_EXEC+" snapshot drop "+snaps)
+
+
+def aptly_delete_unpublished_mirrors():
+    published_mirrors=run_command(APTLY_EXEC+ " publish list")
+    mirrors_all=run_command(APTLY_EXEC+ " mirror list -raw")
+    for mirrors in mirrors_all:
+        if '['+mirrors+']:' not in published_mirrors:
+            run_command(APTLY_EXEC+ " mirror drop "+mirrors)
+    
           
 def display_usage():
     print """   aptly.py -d[--distribution] <distribution> -u[--url] <url> -p[--publish] <publish_path>"
