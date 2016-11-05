@@ -8,6 +8,7 @@ from pprint import pprint as pp
 ARGS={}
 APTLY_EXEC='/usr/bin/aptly'
 TIMESTAMP = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d-%H-%M-%S')
+FORCE=False
 
 def run_command(command):
     print "Running: {}".format(command)
@@ -105,6 +106,7 @@ def display_usage():
                       -c[--components]   : comma separated list of components to download. eg. -c main,universe
                       -s[--suffix]       : snapshot suffix; defaults to TIMESTAMP of format '%Y-%m-%d-%H-%M-%S' at the time of running the script
                       -k[--keep]         : keep this many snapshots (per distribution) and delete the rest while housekeeping; default 30
+                      -f[--force]        : force flag, if set to True update of mirror and new snapshot is enforced
 
           """                     
 
@@ -112,10 +114,10 @@ def main(argv):
 
     global ARGS
     global TIMESTAMP
-
+    global FORCE
 
     try:
-        opts, args = getopt.getopt(argv,"ha:c:d:u:p:s:k:",["help","filters=","architectures=","components=","distributions=","url=", "publish=","suffix=","keep="])
+        opts, args = getopt.getopt(argv,"ha:c:d:u:p:s:k:f",["help","filters=","architectures=","components=","distributions=","url=", "publish=","suffix=","keep=", "force"])
     except getopt.GetoptError:
         display_usage()
         sys.exit(2)
@@ -138,6 +140,8 @@ def main(argv):
             ARGS.update({"SUFFIX":arg})
         elif opt in ("-k", "--keep"):
             ARGS.update({"KEEP":arg})
+        elif opt in ("-f", "--force"):
+            FORCE=True
 
     if 'ARCHS' not in ARGS:
         ARGS.update({"ARCHS":"amd64"})
@@ -145,14 +149,13 @@ def main(argv):
         ARGS.update({"KEEP":30})
     if 'SUFFIX' in ARGS:
         TIMESTAMP=ARGS['SUFFIX']
-        
 
     try:
         print ARGS
         aptly_create_mirrors()
-        aptly_update_mirrors()
+        aptly_update_mirrors(FORCE)
         aptly_publish()
-    #    aptly_housekeep(int(ARGS['KEEP']))
+        aptly_housekeep(int(ARGS['KEEP']))
     except BaseException:
         raise
 
